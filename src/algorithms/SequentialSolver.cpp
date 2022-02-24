@@ -69,10 +69,17 @@ void SequentialSolver::solve() {
         return;
     }
 
+    Edge heaviestEdge = *this->inputGraph.getEdges().begin();
+    int startingVertex = heaviestEdge.getVertex1();
     std::vector<VertexColor> coloring(this->inputGraph.getSize(), VertexColor::UNASSIGNED);
-    coloring[0] = VertexColor::BLUE;
-    std::set<Edge> addedEdges;
-    solveUtil(coloring, inputGraph.getEdges(), inputGraph.getIncidentEdges(0), addedEdges, 0);
+    coloring[startingVertex] = VertexColor::BLUE;
+    solveUtil(
+            coloring,
+            inputGraph.getIncidentEdges(startingVertex),
+            std::set<Edge>(),
+            getEdgeWeight(inputGraph.getEdges()),
+            0
+    );
 
     this->isSolved = true;
     printSolution();
@@ -84,9 +91,9 @@ void SequentialSolver::colorVertices(
         VertexColor c1,
         VertexColor c2,
         const std::vector<VertexColor> &coloring,
-        const std::set<Edge> &remainingEdges,
         const std::set<Edge> &openedEdges,
         const std::set<Edge> &addedEdges,
+        const int &remainingValue,
         const int &currentValue
 ) {
     int v1 = edge.getVertex1();
@@ -95,7 +102,7 @@ void SequentialSolver::colorVertices(
     if ((coloring[v1] == VertexColor::UNASSIGNED || coloring[v1] == c1) &&
         (coloring[v2] == VertexColor::UNASSIGNED || coloring[v2] == c2)) {
         std::vector<VertexColor> newColoring(coloring);
-        std::set<Edge> newRemainingEdges(openedEdges);
+        std::set<Edge> newOpenedEdges(openedEdges);
         std::set<Edge> newAddedEdges(addedEdges);
         newAddedEdges.insert(edge);
         newColoring[v1] = c1;
@@ -104,7 +111,7 @@ void SequentialSolver::colorVertices(
         if (coloring[v1] == VertexColor::UNASSIGNED) {
             for (Edge e: this->inputGraph.getIncidentEdges(v1)) {
                 if (coloring[e.getNeighbor(v1)] == VertexColor::UNASSIGNED) {
-                    newRemainingEdges.insert(e);
+                    newOpenedEdges.insert(e);
                 }
             }
         }
@@ -112,16 +119,16 @@ void SequentialSolver::colorVertices(
         if (coloring[v2] == VertexColor::UNASSIGNED) {
             for (Edge e: this->inputGraph.getIncidentEdges(v2)) {
                 if (coloring[e.getNeighbor(v2)] == VertexColor::UNASSIGNED) {
-                    newRemainingEdges.insert(e);
+                    newOpenedEdges.insert(e);
                 }
             }
         }
 
         solveUtil(
                 newColoring,
-                remainingEdges,
-                newRemainingEdges,
+                newOpenedEdges,
                 newAddedEdges,
+                remainingValue,
                 currentValue + edge.getWeight()
         );
     }
@@ -129,9 +136,9 @@ void SequentialSolver::colorVertices(
 
 void SequentialSolver::solveUtil(
         std::vector<VertexColor> coloring,
-        std::set<Edge> remainingEdges,
         std::set<Edge> openedEdges,
         std::set<Edge> addedEdges,
+        int remainingValue,
         int currentValue
 ) {
     this->recursionCnt++;
@@ -148,7 +155,7 @@ void SequentialSolver::solveUtil(
     }
 
     // Better solution can't be found.
-    if (currentValue + getEdgeWeight(remainingEdges) < bestValue) { return; }
+    if (currentValue + remainingValue < bestValue) { return; }
 
     // No opened edges are left.
     if (openedEdges.empty()) { return; }
@@ -158,20 +165,20 @@ void SequentialSolver::solveUtil(
     VertexColor c2;
     Edge edge = *openedEdges.begin();
     openedEdges.erase(edge);
-    remainingEdges.erase(edge);
+    remainingValue -= edge.getWeight();
 
     // First vertex is colored as red, second is blue
     c1 = VertexColor::RED;
     c2 = VertexColor::BLUE;
-    colorVertices(edge, c1, c2, coloring, remainingEdges, openedEdges, addedEdges, currentValue);
+    colorVertices(edge, c1, c2, coloring, openedEdges, addedEdges, remainingValue, currentValue);
 
     // First vertex is colored as blue, second is red
     c1 = VertexColor::BLUE;
     c2 = VertexColor::RED;
-    colorVertices(edge, c1, c2, coloring, remainingEdges, openedEdges, addedEdges, currentValue);
+    colorVertices(edge, c1, c2, coloring, openedEdges, addedEdges, remainingValue, currentValue);
 
     // Do not add edge to the solution.
-    solveUtil(coloring, remainingEdges, openedEdges, addedEdges, currentValue);
+    solveUtil(coloring, openedEdges, addedEdges, remainingValue, currentValue);
 }
 
 

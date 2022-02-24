@@ -13,8 +13,6 @@ class WeightedGraph {
 public:
     explicit WeightedGraph(int size, std::vector<Edge> &edges);
 
-    std::set<int> getNeighbors(int vertex) const;
-
     const std::set<Edge> &getIncidentEdges(int vertex) const;
 
     int getSize() const;

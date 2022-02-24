@@ -19,9 +19,9 @@ private:
 
     void solveUtil(
             std::vector<VertexColor> coloring,
-            std::set<Edge> remainingEdges,
             std::set<Edge> openedEdges,
             std::set<Edge> addedEdges,
+            int remainingValue,
             int currentValue
     );
 
@@ -30,9 +30,9 @@ private:
             VertexColor c1,
             VertexColor c2,
             const std::vector<VertexColor> &coloring,
-            const std::set<Edge> &remainingEdges,
             const std::set<Edge> &openedEdges,
             const std::set<Edge> &addedEdges,
+            const int &remainingValue,
             const int &currentValue
     );
 

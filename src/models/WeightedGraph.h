@@ -13,24 +13,20 @@ class WeightedGraph {
 public:
     explicit WeightedGraph(int size, std::vector<Edge> &edges);
 
-    const std::set<int> &getNeighbors(int vertex) const;
+    std::set<int> getNeighbors(int vertex) const;
 
-    int getTotalEdges() const;
-
-    const std::vector<Edge> &getEdges() const;
-
-    void setEdges(const std::vector<Edge> &edges);
+    const std::set<Edge> &getIncidentEdges(int vertex) const;
 
     int getSize() const;
 
-private:
-    int totalEdges;
+    const std::set<Edge> &getEdges() const;
 
+private:
     int size;
 
-    std::vector<Edge> edges;
+    std::set<Edge> edges;
 
-    std::vector<std::set<int>> adjacencyList;
+    std::vector<std::set<Edge>> adjacencyList;
 };
 
 

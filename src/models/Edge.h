@@ -8,19 +8,23 @@
 
 class Edge {
 public:
-    Edge(int src, int dst, int weight);
+    Edge(int v1, int v2, int weight);
 
-    int getDst() const;
+    int getVertex1() const;
 
-    int getSrc() const;
+    int getVertex2() const;
 
     int getWeight() const;
+
+    int getNeighbor(int vertex) const;
 
     bool operator<(const Edge &rhs) const;
 
 private:
-    int src;
-    int dst;
+    int v1;
+
+    int v2;
+
     int weight;
 };
 

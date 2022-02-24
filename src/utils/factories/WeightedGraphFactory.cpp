@@ -21,11 +21,8 @@ WeightedGraph WeightedGraphFactory::fromFile(std::string &path) {
             int weight;
             iss >> weight;
             if (weight != 0) {
-                if (i < j) {
-                    edges.insert(Edge(i, j, weight));
-                } else {
-                    edges.insert(Edge(j, i, weight));
-                }
+                edges.insert(Edge(i, j, weight));
+
             }
         }
     }

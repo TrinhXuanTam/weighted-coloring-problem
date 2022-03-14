@@ -2,9 +2,11 @@
 // Created by David Trinh on 16/02/2022.
 //
 
+#include <omp.h>
 #include <iostream>
 #include <vector>
 #include <set>
+#include <chrono>
 
 enum VertexColor {
     UNASSIGNED,
@@ -63,7 +65,8 @@ struct Configuration {
     }
 };
 
-void printSolution(const int &bestValue, const int &recursionCnt, const std::set<Configuration> &results) {
+void printSolution(const int &bestValue, const int &recursionCnt, const std::set<Configuration> &results, const std::chrono::duration<double> time) {
+    std::cout << "Total time: " << time.count() << "s" << std::endl;
     std::cout << "Max weight: " << bestValue << std::endl;
     std::cout << "Recursion count: " << recursionCnt << std::endl;
     std::cout << "Solutions: " << results.size() << std::endl;
@@ -75,7 +78,7 @@ void printSolution(const int &bestValue, const int &recursionCnt, const std::set
         std::set<int> U;
         std::set<int> W;
 
-        for (int j = 0; j < result.coloring.size(); j++) {
+        for (size_t j = 0; j < result.coloring.size(); j++) {
             if (result.coloring[j] == VertexColor::RED) {
                 U.insert(j);
             }
@@ -127,18 +130,8 @@ void solve(
         int remainingValue,
         int currentValue
 ) {
+    #pragma omp atomic update
     recursionCnt++;
-
-    // Better value was found.
-    if (currentValue > bestValue) {
-        bestValue = currentValue;
-        results.clear();
-    }
-
-    // If current value is the best, mark added edges as solution.
-    if (currentValue == bestValue) {
-        results.insert(current);
-    }
 
     // Better solution can't be found.
     if (currentValue + remainingValue < bestValue) { return; }
@@ -146,13 +139,28 @@ void solve(
     // No opened edges are left.
     if (openedEdges.empty()) { return; }
 
+    if (currentValue >= bestValue) {
+        #pragma omp critical
+        {
+            // Better value was found.
+            if (currentValue > bestValue) {
+                bestValue = currentValue;
+                results.clear();
+            }
+            
+            // If current value is the best, mark added edges as solution.
+            if (currentValue == bestValue) {
+                results.insert(current);
+            }
+        }
+    }
+
     // Remove the heaviest edge from opened edges.
     Edge heaviestEdge = *openedEdges.begin();
     openedEdges.erase(openedEdges.begin());
     adjacencyMatrix[heaviestEdge.v1].erase(heaviestEdge);
     adjacencyMatrix[heaviestEdge.v2].erase(heaviestEdge);
     remainingValue -= heaviestEdge.weight;
-
 
     // Color vertices.
     VertexColor c1 = VertexColor::UNASSIGNED;
@@ -184,13 +192,17 @@ void solve(
             newOpenedEdges.insert(e);
         }
 
-        solve(recursionCnt, bestValue, results, newConfiguration, newAdjacencyMatrix, newOpenedEdges, remainingValue,currentValue + heaviestEdge.weight);
+        #pragma omp task firstprivate(newConfiguration, newAdjacencyMatrix, newOpenedEdges, remainingValue, currentValue, heaviestEdge) shared(recursionCnt, bestValue, results) default(none)
+        solve(recursionCnt, bestValue, results, newConfiguration, newAdjacencyMatrix, newOpenedEdges, remainingValue, currentValue + heaviestEdge.weight);
     }
 
     // Do not add edge to the solution.
+    #pragma omp task firstprivate(current, adjacencyMatrix, openedEdges, remainingValue, currentValue) shared(recursionCnt, bestValue, results) default(none)
     solve(recursionCnt, bestValue, results, current, adjacencyMatrix, openedEdges, remainingValue, currentValue);
 }
 
+// g++ -Wall --std=c++11 -fopenmp -O3 main.cpp -o parallel.out
+// g++ -Wall --std=c++11 -O3 main.cpp -o sequential.out
 int main(int argc, char *argv[]) {
     int vertexCnt = 0;
     int recursionCnt = 0;
@@ -226,6 +238,16 @@ int main(int argc, char *argv[]) {
     coloring[heaviestEdge.v1] = VertexColor::RED;
     adjacencyMatrix[heaviestEdge.v1].erase(heaviestEdge);
     adjacencyMatrix[heaviestEdge.v2].erase(heaviestEdge);
-    solve(recursionCnt, bestValue, results,Configuration(coloring, addedEdges), adjacencyMatrix, openedEdges, totalWeight,0);
-    printSolution(bestValue, recursionCnt, results);
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    #pragma omp parallel firstprivate(coloring, addedEdges, adjacencyMatrix, openedEdges, totalWeight) shared(recursionCnt, bestValue, results) default(none)
+    {
+        #pragma omp single
+        solve(recursionCnt, bestValue, results, Configuration(coloring, addedEdges), adjacencyMatrix, openedEdges, totalWeight, 0);
+    }
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+
+    printSolution(bestValue, recursionCnt, results, endTime - startTime);
 }

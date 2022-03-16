@@ -201,8 +201,6 @@ void solve(
     solve(recursionCnt, bestValue, results, current, adjacencyMatrix, openedEdges, remainingValue, currentValue);
 }
 
-// g++ -Wall --std=c++11 -fopenmp -O3 main.cpp -o parallel.out
-// g++ -Wall --std=c++11 -O3 main.cpp -o sequential.out
 int main(int argc, char *argv[]) {
     int vertexCnt = 0;
     int recursionCnt = 0;

@@ -2,7 +2,6 @@
 // Created by David Trinh on 16/02/2022.
 //
 
-#include <omp.h>
 #include <iostream>
 #include <vector>
 #include <set>
@@ -130,7 +129,6 @@ void solve(
         int remainingValue,
         int currentValue
 ) {
-    #pragma omp atomic update
     recursionCnt++;
 
     // Better solution can't be found.
@@ -139,20 +137,15 @@ void solve(
     // No opened edges are left.
     if (openedEdges.empty()) { return; }
 
-    if (currentValue >= bestValue) {
-        #pragma omp critical
-        {
-            // Better value was found.
-            if (currentValue > bestValue) {
-                bestValue = currentValue;
-                results.clear();
-            }
+    // Better value was found.
+    if (currentValue > bestValue) {
+        bestValue = currentValue;
+        results.clear();
+    }
             
-            // If current value is the best, mark added edges as solution.
-            if (currentValue == bestValue) {
-                results.insert(current);
-            }
-        }
+    // If current value is the best, mark added edges as solution.
+    if (currentValue == bestValue) {
+        results.insert(current);
     }
 
     // Remove the heaviest edge from opened edges.
@@ -192,12 +185,10 @@ void solve(
             newOpenedEdges.insert(e);
         }
 
-        #pragma omp task firstprivate(newConfiguration, newAdjacencyMatrix, newOpenedEdges, remainingValue, currentValue, heaviestEdge) shared(recursionCnt, bestValue, results) default(none)
         solve(recursionCnt, bestValue, results, newConfiguration, newAdjacencyMatrix, newOpenedEdges, remainingValue, currentValue + heaviestEdge.weight);
     }
 
     // Do not add edge to the solution.
-    #pragma omp task firstprivate(current, adjacencyMatrix, openedEdges, remainingValue, currentValue) shared(recursionCnt, bestValue, results) default(none)
     solve(recursionCnt, bestValue, results, current, adjacencyMatrix, openedEdges, remainingValue, currentValue);
 }
 
@@ -239,11 +230,7 @@ int main(int argc, char *argv[]) {
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
-    #pragma omp parallel firstprivate(coloring, addedEdges, adjacencyMatrix, openedEdges, totalWeight) shared(recursionCnt, bestValue, results) default(none)
-    {
-        #pragma omp single
-        solve(recursionCnt, bestValue, results, Configuration(coloring, addedEdges), adjacencyMatrix, openedEdges, totalWeight, 0);
-    }
+    solve(recursionCnt, bestValue, results, Configuration(coloring, addedEdges), adjacencyMatrix, openedEdges, totalWeight, 0);
 
     auto endTime = std::chrono::high_resolution_clock::now();
 

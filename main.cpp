@@ -131,12 +131,6 @@ void solve(
 ) {
     recursionCnt++;
 
-    // Better solution can't be found.
-    if (currentValue + remainingValue < bestValue) { return; }
-
-    // No opened edges are left.
-    if (openedEdges.empty()) { return; }
-
     // Better value was found.
     if (currentValue > bestValue) {
         bestValue = currentValue;
@@ -147,6 +141,12 @@ void solve(
     if (currentValue == bestValue) {
         results.insert(current);
     }
+    
+    // Better solution can't be found.
+    if (currentValue + remainingValue < bestValue) { return; }
+
+    // No opened edges are left.
+    if (openedEdges.empty()) { return; }
 
     // Remove the heaviest edge from opened edges.
     Edge heaviestEdge = *openedEdges.begin();

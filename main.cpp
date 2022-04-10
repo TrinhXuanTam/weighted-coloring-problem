@@ -248,19 +248,25 @@ void printSolution(
 ) {
     std::cout << "Total time: " << time.count() << "s" << std::endl;
     std::cout << "Max weight: " << bestWeight << std::endl;
-
-    std::cout << std::endl;
     
-    std::set<std::set<int>> uniqueSolutions;
-    int solutionNo = 1;
+    std::set<std::set<int>> uniqueEdges;
+    std::vector<Configuration> uniqueResults;
+
     for (const auto &result: results) {
         std::set<int> solutionEdges(result.edges.begin(), result.edges.end());
-        if (uniqueSolutions.find(solutionEdges) == uniqueSolutions.end()) {
-            uniqueSolutions.insert(solutionEdges);
+        if (uniqueEdges.find(solutionEdges) == uniqueEdges.end()) {
+            uniqueEdges.insert(solutionEdges);
+            uniqueResults.push_back(result);
         } else {
             continue;
         }
+    }
 
+    std::cout << "Solutions: " << uniqueResults.size() << std::endl;
+    std::cout << std::endl;
+
+    int solutionNo = 1;
+    for (const auto &result: uniqueResults) {
         std::vector<int> U;
         std::vector<int> W;
 

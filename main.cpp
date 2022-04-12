@@ -49,9 +49,10 @@ struct State {
     int index;
 
     State(
+        int vertexCnt,
         std::vector<Edge> edges
     ) : edges(edges), 
-        configuration(Configuration(std::vector<VertexColor>(edges.size(), VertexColor::UNASSIGNED))),
+        configuration(Configuration(std::vector<VertexColor>(vertexCnt, VertexColor::UNASSIGNED))),
         remainingWeight(0),
         currentWeight(0),
         index(0) {
@@ -96,7 +97,7 @@ struct State {
         }
 
         return std::nullopt;
-    }    
+    }
 };
 
 void printSolution(
@@ -221,7 +222,7 @@ int main(int argc, char *argv[]) {
     std::sort(edges.begin(), edges.end(), Edge::cmp);
 
     auto startTime = std::chrono::high_resolution_clock::now();
-    solve(recursionCnt, bestWeight, results, State(edges));
+    solve(recursionCnt, bestWeight, results, State(vertexCnt, edges));
     auto endTime = std::chrono::high_resolution_clock::now();
 
     printSolution(edges, bestWeight, recursionCnt, results, endTime - startTime);

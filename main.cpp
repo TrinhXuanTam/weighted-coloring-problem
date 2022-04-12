@@ -104,27 +104,39 @@ struct State {
 
         return std::nullopt;
     }
+};
 
-    std::vector<int> serialize() {
+struct Task {
+    State state;
+    int bestWeight;
+
+    Task(const State& state, const int bestWeight) : state(state), bestWeight(bestWeight) {}
+
+    std::vector<int> serialize() const {
+        return Task::serialize(bestWeight, state);
+    }
+    
+    static std::vector<int> serialize(const int bestWeight, const State& state) {
         std::vector<int> buffer;
+        
+        buffer.push_back(bestWeight);
+        buffer.push_back(state.index);
+        buffer.push_back(state.currentWeight);
+        buffer.push_back(state.remainingWeight);
+        buffer.push_back(state.edges.size());
+        buffer.push_back(state.configuration.coloring.size());
 
-        buffer.push_back(index);
-        buffer.push_back(currentWeight);
-        buffer.push_back(remainingWeight);
-        buffer.push_back(this->edges.size());
-        buffer.push_back(this->configuration.coloring.size());
-
-        for (const auto& edge : this->edges) {
+        for (const auto& edge : state.edges) {
             buffer.push_back(edge.v1);
             buffer.push_back(edge.v2);
             buffer.push_back(edge.weight);
         }
 
-        for (const auto& VertexColor : this->configuration.coloring) {
+        for (const auto& VertexColor : state.configuration.coloring) {
             buffer.push_back(VertexColor);
         }
 
-        for (const auto& edgeIndex : this->configuration.edges) {
+        for (const auto& edgeIndex : state.configuration.edges) {
             buffer.push_back(edgeIndex);
         }
             
@@ -132,17 +144,18 @@ struct State {
         return buffer;
     }
 
-    static State deserialize(std::vector<int> buffer) {
-        int index = buffer[0];
-        int currentWeight = buffer[1];
-        int remainingWeight = buffer[2];
-        int edgeCnt = buffer[3];
-        int vertexCnt = buffer[4];
+    static Task deserialize(std::vector<int> buffer) {
+        int bestWeight = buffer[0];
+        int index = buffer[1];
+        int currentWeight = buffer[2];
+        int remainingWeight = buffer[3];
+        int edgeCnt = buffer[4];
+        int vertexCnt = buffer[5];
         std::vector<Edge> edges;
         std::vector<VertexColor> coloring;
         std::vector<int> edgeIndexes;
 
-        int i = 5;
+        int i = 6;
         while (i < edgeCnt * 3 + 5) {
             edges.emplace_back(buffer[i], buffer[i + 1], buffer[i + 2]);
             i += 3;
@@ -159,7 +172,7 @@ struct State {
             i++;
         }
 
-        return State(edges, Configuration(coloring, edgeIndexes), remainingWeight, currentWeight, index);
+        return Task(State(edges, Configuration(coloring, edgeIndexes), remainingWeight, currentWeight, index), bestWeight);
     }
 };
 
@@ -387,8 +400,8 @@ void master(std::string filename, int procCnt) {
 
     for (int i = 1; i <= slavesCnt && !states.empty(); i++) {
         State state = states.front();
-        std::vector<int> stateData = state.serialize();
-        MPI_Send(stateData.data(), (int) stateData.size(), MPI_INT, i, TAG_DO, MPI_COMM_WORLD);
+        std::vector<int> data = Task::serialize(bestWeight, state);
+        MPI_Send(data.data(), (int) data.size(), MPI_INT, i, TAG_DO, MPI_COMM_WORLD);
         states.pop_front();
     };
 
@@ -418,8 +431,8 @@ void master(std::string filename, int procCnt) {
             slavesCnt--;
         } else {
             State state = states.front();
-            std::vector<int> stateData = state.serialize();
-            MPI_Send(stateData.data(), (int) stateData.size(), MPI_INT, status.MPI_SOURCE, TAG_DO, MPI_COMM_WORLD);
+            std::vector<int> data = Task::serialize(bestWeight, state);
+            MPI_Send(data.data(), (int) data.size(), MPI_INT, status.MPI_SOURCE, TAG_DO, MPI_COMM_WORLD);
             states.pop_front();
         }
     }
@@ -437,9 +450,10 @@ void slave(int maxThreads) {
         MPI_Recv(buffer.data(), BUFFER_SIZE, MPI_INT, MASTER_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
         if (status.MPI_TAG == TAG_DO) {
-            int bestWeight = 0;
+            Task parsedData = Task::deserialize(buffer);
+            int bestWeight = parsedData.bestWeight;
             std::vector<Configuration> results;
-            State parsedState = State::deserialize(buffer);
+            State parsedState = parsedData.state;
             std::deque<State> states = generateStates(parsedState, maxThreads * 10);
 
             #pragma omp parallel for shared(bestWeight, results) firstprivate(states) default(none)

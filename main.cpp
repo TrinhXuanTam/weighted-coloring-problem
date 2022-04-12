@@ -2,13 +2,14 @@
 // Created by David Trinh on 16/02/2022.
 //
 
-#include <omp.h>
 #include <iostream>
-#include <vector>
 #include <set>
-#include <chrono>
-#include <optional>
+#include <vector>
 #include <deque>
+#include <chrono>
+#include <algorithm>
+#include <optional>
+#include <omp.h>
 
 enum VertexColor {
     UNASSIGNED,
@@ -21,154 +22,119 @@ struct Edge {
     int v2;
     int weight;
 
-    Edge(int v1, int v2, int weight) : weight(weight) {
-        if (v1 < v2) {
-            this->v1 = v1;
-            this->v2 = v2;
-        } else {
-            this->v1 = v2;
-            this->v2 = v1;
+    Edge(int v1, int v2, int weight) : v1(v1), v2(v2), weight(weight) {}
+
+    static bool cmp(const Edge& lhs, const Edge& rhs) {
+        if(lhs.v1 == rhs.v1) {
+            return lhs.weight >= rhs.weight;
         }
-    }
-
-    bool operator==(const Edge &rhs) const {
-        return this->v1 == rhs.v1 && this->v2 == rhs.v2 && this->weight == rhs.weight;
-    }
-
-    bool operator<(const Edge &rhs) const {
-        if (weight < rhs.weight)
-            return false;
-        if (rhs.weight < weight)
-            return true;
-        if (v1 < rhs.v1)
-            return true;
-        if (rhs.v1 < v1)
-            return false;
-        if (v2 < rhs.v2)
-            return true;
-        if (rhs.v2 < v2)
-            return false;
-        return false;
+        return lhs.v1 >= rhs.v1;
     }
 };
 
 struct Configuration {
     std::vector<VertexColor> coloring;
-    std::set<Edge> addedEdges;
+    std::vector<int> edges;
+   
+    Configuration(std::vector<VertexColor> coloring, std::vector<int> edges) : coloring(coloring), edges(edges) {}
 
-    Configuration(
-            const std::vector<VertexColor> &coloring,
-            const std::set<Edge> &addedEdges
-    ) : coloring(coloring), addedEdges(addedEdges) {}
-
-    bool operator<(const Configuration &rhs) const {
-        if (coloring < rhs.coloring)
-            return true;
-        if (rhs.coloring < coloring)
-            return false;
-        return addedEdges < rhs.addedEdges;
-    }
+    Configuration(std::vector<VertexColor> coloring) : coloring(coloring) {
+        this->edges = std::vector<int>();
+    }    
 };
 
 struct State {
+    std::vector<Edge> edges;
     Configuration configuration;
-    std::vector<std::set<Edge>> adjacencyMatrix;
-    std::set<Edge> incidentEdges;
-    int remainingValue;
-    int currentValue;
+    int remainingWeight;
+    int currentWeight;
+    int index;
 
-public:
     State(
-        const Configuration& configuration,
-        const std::vector<std::set<Edge>>& adjacencyMatrix,
-        const std::set<Edge>& incidentEdges,
-        const int remainingValue,
-        const int currentValue
-    ) : configuration(configuration), 
-        adjacencyMatrix(adjacencyMatrix), 
-        incidentEdges(incidentEdges),
-        remainingValue(remainingValue),
-        currentValue(currentValue) {}
-
-    const Edge& getHeaviestIncidentEdge() const { 
-        return *this->incidentEdges.begin();
+        int vertexCnt,
+        std::vector<Edge> edges
+    ) : edges(edges), 
+        configuration(Configuration(std::vector<VertexColor>(vertexCnt, VertexColor::UNASSIGNED))),
+        remainingWeight(0),
+        currentWeight(0),
+        index(0) {
+        for (const auto& edge : edges) {
+            this->remainingWeight += edge.weight;
+        }
     }
 
-    std::optional<State> next(bool isEdgeAdded) const {
+    State(
+        std::vector<Edge> edges,
+        Configuration configuration, 
+        int remainingWeight, 
+        int currentWeight, 
+        int index
+    ) : edges(edges),
+        configuration(configuration), 
+        remainingWeight(remainingWeight), 
+        currentWeight(currentWeight), 
+        index(index) {}
+
+    std::optional<State> next(VertexColor c1, VertexColor c2) const {
+        if ((size_t)(this->index) == this->edges.size()) {
+            return std::nullopt;
+        }
+
         State newState = *this;
-        Edge heaviestEdge = newState.getHeaviestIncidentEdge();
-        newState.incidentEdges.erase(heaviestEdge);
-        newState.adjacencyMatrix[heaviestEdge.v1].erase(heaviestEdge);
-        newState.adjacencyMatrix[heaviestEdge.v2].erase(heaviestEdge);
-        newState.remainingValue -= heaviestEdge.weight;
+        Edge current = edges[this->index];
+        newState.remainingWeight -= current.weight;
+        newState.index++;
 
-        if (!isEdgeAdded) return newState;
-
-        VertexColor c1 = VertexColor::UNASSIGNED;
-        VertexColor c2 = VertexColor::UNASSIGNED;
-        if (this->isColorAssignmentValid(heaviestEdge, VertexColor::RED, VertexColor::BLUE, newState.configuration)) {
-            c1 = VertexColor::RED;
-            c2 = VertexColor::BLUE;
+        if (c1 == VertexColor::UNASSIGNED  && c2 == VertexColor::UNASSIGNED) {
+            return newState;
         }
-        if (this->isColorAssignmentValid(heaviestEdge, VertexColor::BLUE, VertexColor::RED, newState.configuration)) {
-            c1 = VertexColor::BLUE;
-            c2 = VertexColor::RED;
-        }
-        if (c1 != VertexColor::UNASSIGNED && c2 != VertexColor::UNASSIGNED) {
-            newState.configuration.coloring[heaviestEdge.v1] = c1;
-            newState.configuration.coloring[heaviestEdge.v2] = c2;
-            newState.configuration.addedEdges.insert(heaviestEdge);
-            newState.currentValue += heaviestEdge.weight;
 
-            for (auto e: this->adjacencyMatrix[heaviestEdge.v1]) {
-                if(e == heaviestEdge) continue;
-                newState.adjacencyMatrix[e.v1].erase(e);
-                newState.adjacencyMatrix[e.v2].erase(e);
-                newState.incidentEdges.insert(e);
-            }
-
-            for (auto e: this->adjacencyMatrix[heaviestEdge.v2]) {
-                if(e == heaviestEdge) continue;
-                newState.adjacencyMatrix[e.v1].erase(e);
-                newState.adjacencyMatrix[e.v2].erase(e);
-                newState.incidentEdges.insert(e);
-            }
-
+        if ((this->configuration.coloring[current.v1] == VertexColor::UNASSIGNED || this->configuration.coloring[current.v1] == c1)
+        && (this->configuration.coloring[current.v2] == VertexColor::UNASSIGNED || this->configuration.coloring[current.v2] == c2)) {
+            newState.currentWeight += current.weight;
+            newState.configuration.coloring[current.v1] = c1;
+            newState.configuration.coloring[current.v2] = c2;
+            newState.configuration.edges.emplace_back(this->index);
             return newState;
         }
 
         return std::nullopt;
     }
-
-private:
-    const bool isColorAssignmentValid(const Edge &edge, VertexColor c1, VertexColor c2, const Configuration &configuration) const {
-        int v1 = edge.v1;
-        int v2 = edge.v2;
-
-        return (configuration.coloring[v1] == VertexColor::UNASSIGNED || configuration.coloring[v1] == c1) &&
-               (configuration.coloring[v2] == VertexColor::UNASSIGNED || configuration.coloring[v2] == c2);
-    }
 };
 
-void printSolution(const int &bestValue, const int &recursionCnt, const std::set<Configuration> &results, const std::chrono::duration<double> time) {
+
+void printSolution(
+    const std::vector<Edge>& edges,
+    const int &bestWeight, 
+    const int &recursionCnt, 
+    const std::vector<Configuration> &results, 
+    const std::chrono::duration<double> time
+) {
     std::cout << "Total time: " << time.count() << "s" << std::endl;
-    std::cout << "Max weight: " << bestValue << std::endl;
+    std::cout << "Max weight: " << bestWeight << std::endl;
     std::cout << "Recursion count: " << recursionCnt << std::endl;
-    std::cout << "Solutions: " << results.size() << std::endl;
 
     std::cout << std::endl;
-
+    
+    std::set<std::set<int>> uniqueSolutions;
     int solutionNo = 1;
     for (const auto &result: results) {
-        std::set<int> U;
-        std::set<int> W;
+        std::set<int> solutionEdges(result.edges.begin(), result.edges.end());
+        if (uniqueSolutions.find(solutionEdges) == uniqueSolutions.end()) {
+            uniqueSolutions.insert(solutionEdges);
+        } else {
+            continue;
+        }
+
+        std::vector<int> U;
+        std::vector<int> W;
 
         for (size_t j = 0; j < result.coloring.size(); j++) {
             if (result.coloring[j] == VertexColor::RED) {
-                U.insert(j);
+                U.emplace_back(j);
             }
             if (result.coloring[j] == VertexColor::BLUE) {
-                W.insert(j);
+                W.emplace_back(j);
             }
         }
 
@@ -187,8 +153,8 @@ void printSolution(const int &bestValue, const int &recursionCnt, const std::set
         std::cout << "}" << std::endl;
 
         std::cout << "E: { ";
-        for (const auto &e: result.addedEdges) {
-            std::cout << "(" << e.v1 << ", " << e.v2 << ") ";
+        for (const auto &e: result.edges) {
+            std::cout << "(" << edges[e].v1 << ", " << edges[e].v2 << ") ";
         }
         std::cout << "}" << std::endl;
 
@@ -197,7 +163,7 @@ void printSolution(const int &bestValue, const int &recursionCnt, const std::set
     }
 }
 
-std::deque<State> generateStates(const State& initialState, const size_t maxStates ) {
+std::deque<State> generateStates(const State& initialState, const size_t maxStates) {
     std::deque<State> states;
     states.push_back(initialState);
 
@@ -205,109 +171,97 @@ std::deque<State> generateStates(const State& initialState, const size_t maxStat
         State front = states.front();
         states.pop_front();
 
-        std::optional<State> addedState = front.next(true);
-        std::optional<State> notAddedState = front.next(false);
+        std::optional<State> blueRedState = front.next(VertexColor::BLUE, VertexColor::RED);
+        std::optional<State> redBlueState = front.next(VertexColor::RED, VertexColor::BLUE);
+        std::optional<State> notAddedState = front.next(VertexColor::UNASSIGNED, VertexColor::UNASSIGNED);
 
-        if (addedState) states.push_back(*addedState);
+        if (blueRedState) states.push_back(*blueRedState);
+        if (redBlueState) states.push_back(*redBlueState);
         if (notAddedState) states.push_back(*notAddedState);
+        if (!blueRedState && !redBlueState && !notAddedState) {
+            break;
+        }
     }
 
     return states;
 }
 
-void solve(int &recursionCnt, int &bestValue, std::set<Configuration> &results, const State& state) {
+void solve(int &recursionCnt, int &bestWeight, std::vector<Configuration> &results, const State& state) {
     #pragma omp atomic update
     recursionCnt++;
-
-    if (state.currentValue >= bestValue) {
+    
+    if (state.currentWeight >= bestWeight) {
         #pragma omp critical
         {
             // Better value was found.
-            if (state.currentValue > bestValue) {
-                bestValue = state.currentValue;
+            if (state.currentWeight > bestWeight) {
+                bestWeight = state.currentWeight;
                 results.clear();
             }
             
             // If current value is the best, mark added edges as solution.
-            if (state.currentValue == bestValue) {
-                results.insert(state.configuration);
+            if (state.currentWeight == bestWeight) {
+                results.push_back(state.configuration);
             }
         }
     }
     
     // Better solution can't be found.
-    if (state.currentValue + state.remainingValue < bestValue) { return; }
+    if (state.currentWeight + state.remainingWeight < bestWeight) { return; }
 
     // No opened edges are left.
-    if (state.incidentEdges.empty()) { return; }
-
-    // Better solution can't be found.
-    if (state.currentValue + state.remainingValue < bestValue) { return; }
-
-    // No incident edges are left.
-    if (state.incidentEdges.empty()) { return; }
+    if ((size_t)(state.index) == state.edges.size()) { return; }
 
     // Add edge to the solution if valid coloring exists.
-    std::optional<State> edgeAddedState = state.next(true);
-    if (edgeAddedState) {
-        solve(recursionCnt, bestValue, results, *edgeAddedState);
+    std::optional<State> blueRedState = state.next(VertexColor::BLUE, VertexColor::RED);
+    std::optional<State> redBlueState = state.next(VertexColor::RED, VertexColor::BLUE);
+    if (blueRedState) {
+        #pragma omp task firstprivate(blueRedState) shared(recursionCnt, bestWeight, results) default(none)
+        solve(recursionCnt, bestWeight, results, *blueRedState);
+    } 
+    if (redBlueState) {
+        #pragma omp task firstprivate(redBlueState) shared(recursionCnt, bestWeight, results) default(none)
+        solve(recursionCnt, bestWeight, results, *redBlueState);
     }
 
     // Do not add edge to the solution.
-    std::optional<State> edgeNotAddedState = state.next(false);
+    std::optional<State> edgeNotAddedState = state.next(VertexColor::UNASSIGNED, VertexColor::UNASSIGNED);
     if (edgeNotAddedState) {
-        solve(recursionCnt, bestValue, results, *edgeNotAddedState);
+        #pragma omp task firstprivate(edgeNotAddedState) shared(recursionCnt, bestWeight, results) default(none)
+        solve(recursionCnt, bestWeight, results, *edgeNotAddedState);
     }
+
 }
 
 int main(int argc, char *argv[]) {
     const int max_threads = omp_get_max_threads();
     int vertexCnt = 0;
+    int bestWeight = 0;
     int recursionCnt = 0;
-    int bestValue = 0;
-    int totalWeight = 0;
-    std::set<Configuration> results;
-    std::set<Edge> openedEdges;
-    Edge heaviestEdge = Edge(-1, -1, -1);
-
+    std::vector<Edge> edges;
+    std::vector<Configuration> results;
     std::cin >> vertexCnt;
-    std::vector<std::set<Edge>> adjacencyMatrix = std::vector<std::set<Edge>>(vertexCnt, std::set<Edge>());
-
     for (int i = 0; i < vertexCnt; ++i) {
         for (int j = 0; j < vertexCnt; ++j) {
             int weight;
             std::cin >> weight;
             if (weight != 0 && j >= i) {
-                Edge edge(i, j, weight);
-                adjacencyMatrix[i].insert(edge);
-                adjacencyMatrix[j].insert(edge);
-                if (weight > heaviestEdge.weight) {
-                    heaviestEdge = edge;
-                }
-                totalWeight += weight;
+                edges.emplace_back(i, j, weight);
             }
         }
     }
-
-    std::vector<VertexColor> coloring = std::vector<VertexColor>(vertexCnt, VertexColor::UNASSIGNED);
-    std::set<Edge> addedEdges;
-
-    openedEdges = adjacencyMatrix[heaviestEdge.v1];
-    coloring[heaviestEdge.v1] = VertexColor::RED;
-    adjacencyMatrix[heaviestEdge.v1].erase(heaviestEdge);
-    adjacencyMatrix[heaviestEdge.v2].erase(heaviestEdge);
-
-    State initialState(Configuration(coloring, addedEdges), adjacencyMatrix, openedEdges, totalWeight, 0);
+    std::sort(edges.begin(), edges.end(), Edge::cmp);
+    State initialState(vertexCnt, edges);
     std::deque<State> states = generateStates(initialState, max_threads * 10);
 
     auto startTime = std::chrono::high_resolution_clock::now();
-
-    #pragma omp parallel for shared(recursionCnt, bestValue, results) firstprivate(states) default(none)
+    #pragma omp parallel for shared(recursionCnt, bestWeight, results) firstprivate(states) default(none)
     for (size_t i = 0; i < states.size(); i++) {
-        solve(recursionCnt, bestValue, results, states[i]);
+        solve(recursionCnt, bestWeight, results, states[i]);
     }
-
     auto endTime = std::chrono::high_resolution_clock::now();
 
-    printSolution(bestValue, recursionCnt, results, endTime - startTime);
+    printSolution(edges, bestWeight, recursionCnt, results, endTime - startTime);
+
+    return 0;
 }
